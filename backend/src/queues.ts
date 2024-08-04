@@ -22,18 +22,163 @@ import Plan from "./models/Plan";
 import Schedule from "./models/Schedule";
 import User from "./models/User";
 import Whatsapp from "./models/Whatsapp";
-import ShowFileService from "./services/FileServices/ShowService";
-import { getMessageOptions } from "./services/WbotServices/SendWhatsAppMedia";
+import Ticket from './models/Ticket'; // Certifique-se de que o modelo Ticket está importado corretamente
+import Queue from './models/Queue'; // Corrigido o nome do modelo
+import UserQueue from './models/UserQueue'; // Certifique-se de que o modelo UserQueue está importado corretamente
+import ShowContactService from './services/ContactServices/ShowContactService'; // Corrigido o caminho e nome do serviço
+import ShowTicketService from './services/TicketServices/ShowTicketService'; // Corrigido o caminho e nome do serviço
+import SendWhatsAppMessage from './services/WbotServices/SendWhatsAppMessage'; // Corrigido o caminho e nome do serviço
+import UpdateTicketService from './services/TicketServices/UpdateTicketService'; // Corrigido o caminho e nome do serviço
+import ListWhatsAppsService from "./services/WhatsappService/ListWhatsAppsService";
 import { ClosedAllOpenTickets } from "./services/WbotServices/wbotClosedTickets";
+import { TicketTaskMoveToQueue } from "./services/TicketServices/TicketTaskMoveToQueue";
+import { executaAcaoACada10Segundos } from "./services/cronjob/cronJob";
+
+// Função para obter opções de mensagem
+import { getMessageOptions } from './services/WbotServices/SendWhatsAppMedia'; // Certifique-se de que o caminho e nome da função estão corretos
+
 import { logger } from "./utils/logger";
 
-
-const nodemailer = require('nodemailer');
-const CronJob = require('cron').CronJob;
-
+// Execute o cronjob
+executaAcaoACada10Segundos();
+const nodemailer = require("nodemailer");
+const CronJob = require("cron").CronJob;
 const connection = process.env.REDIS_URI || "";
 const limiterMax = process.env.REDIS_OPT_LIMITER_MAX || 1;
 const limiterDuration = process.env.REDIS_OPT_LIMITER_DURATION || 3000;
+
+// Função para obter o ID de um usuário aleatório
+const getRandomUserId = (userIds) => {
+  const randomIndex = Math.floor(Math.random() * userIds.length);
+  return userIds[randomIndex];
+};
+
+// Função para buscar o usuário pelo ID
+const findUserById = async (userId) => {
+  try {
+    const user = await User.findOne({
+      where: { id: userId },
+    });
+
+    if (user && user.profile === "user") {
+      if (user.online === true) {
+        return user.id;
+      } else {
+        logger.info("USER OFFLINE");
+        return 0;
+      }
+    } else {
+      logger.info("ADMIN");
+      return 0;
+    }
+  } catch (errorV) {
+    Sentry.captureException(errorV);
+    logger.error("SearchForUsersRandom -> VerifyUsersRandom: error", errorV.message);
+    throw errorV;
+  }
+};
+
+async function handleRandomUser() {
+  logger.info("Iniciando a randomização dos atendimentos...");
+
+  const jobR = new CronJob('*/20 * * * * *', async () => {
+    try {
+      const { count, rows: tickets } = await Ticket.findAndCountAll({
+        where: {
+          status: "pending",
+          queueId: {
+            [Op.ne]: null, // queueId is not null
+            [Op.ne]: 0,    // queueId is not 0
+          },
+          "$queue.ativarRoteador$": true,
+          "$queue.tempoRoteador$": {
+            [Op.ne]: 0, // Check tempoRoteador is not 0
+          },
+        },
+        include: [
+          {
+            model: Queue,
+            as: "queue",
+          },
+        ],
+      });
+
+      if (count > 0) {
+        for (const ticket of tickets) {
+          const { queue, queueId, userId } = ticket;
+          const tempoRoteador = queue.tempoRoteador;
+
+          const userQueues = await UserQueue.findAll({
+            where: { queueId: queueId },
+          });
+
+          const contact = await ShowContactService(ticket.contactId, ticket.companyId);
+          const userIds = userQueues.map((userQueue) => userQueue.userId);
+
+          const tempoPassadoB = moment().subtract(tempoRoteador, "minutes").utc().toDate();
+          const updatedAtV = new Date(ticket.updatedAt);
+
+          if (!userId) {
+            const randomUserId = getRandomUserId(userIds);
+
+            if (await findUserById(randomUserId) > 0) {
+              const ticketToSend = await ShowTicketService(ticket.id, ticket.companyId);
+              await SendWhatsAppMessage({ body: "*Assistente Virtual*:\nAguarde enquanto localizamos um atendente... Você será atendido em breve!", ticket: ticketToSend });
+
+              await UpdateTicketService({
+                ticketData: { status: "open", userId: randomUserId },
+                ticketId: ticket.id,
+                companyId: ticket.companyId,
+              });
+
+              logger.info(`Ticket ID ${ticket.id} updated with UserId ${randomUserId} - ${ticket.updatedAt}`);
+            } else {
+              logger.info(`Ticket ID ${ticket.id} NOT updated with UserId ${randomUserId} - ${ticket.updatedAt}`);
+            }
+          } else if (userIds.includes(userId)) {
+            if (tempoPassadoB > updatedAtV) {
+              const availableUserIds = userIds.filter((id) => id !== userId);
+
+              if (availableUserIds.length > 0) {
+                const randomUserId = getRandomUserId(availableUserIds);
+
+                if (await findUserById(randomUserId) > 0) {
+                  const ticketToSend = await ShowTicketService(ticket.id, ticket.companyId);
+                  await SendWhatsAppMessage({ body: "*Assistente Virtual*:\nAguarde enquanto localizamos um atendente... Você será atendido em breve!", ticket: ticketToSend });
+
+                  await UpdateTicketService({
+                    ticketData: { status: "open", userId: randomUserId },
+                    ticketId: ticket.id,
+                    companyId: ticket.companyId,
+                  });
+
+                  await ticket.reload();
+                  logger.info(`Ticket ID ${ticket.id} updated with UserId ${randomUserId} - ${ticket.updatedAt}`);
+                } else {
+                  logger.info(`Ticket ID ${ticket.id} NOT updated with UserId ${randomUserId} - ${ticket.updatedAt}`);
+                }
+              } else {
+                logger.info(`Ticket ID ${ticket.id} has no other available UserId.`);
+              }
+            } else {
+              logger.info(`Ticket ID ${ticket.id} has a valid UserId ${userId} IN TIME ${tempoRoteador}.`);
+            }
+          } else {
+            logger.info(`Ticket ID ${ticket.id} has a valid UserId ${userId}.`);
+          }
+        }
+      }
+    } catch (e) {
+      Sentry.captureException(e);
+      logger.error("SearchForUsersRandom -> VerifyUsersRandom: error", e.message);
+      throw e;
+    }
+  });
+
+  jobR.start();
+}
+
+
 
 interface ProcessCampaignData {
   id: number;
@@ -686,87 +831,40 @@ async function handleDispatchCampaign(job) {
     const { campaignShippingId, campaignId }: DispatchCampaignData = data;
     const campaign = await getCampaign(campaignId);
     const wbot = await GetWhatsappWbot(campaign.whatsapp);
-
-    if (!wbot) {
-      logger.error(`campaignQueue -> DispatchCampaign -> error: wbot not found`);
-      return;
-    }
-
-    if (!campaign.whatsapp) {
-      logger.error(`campaignQueue -> DispatchCampaign -> error: whatsapp not found`);
-      return;
-    }
-
-    if (!wbot?.user?.id) {
-      logger.error(`campaignQueue -> DispatchCampaign -> error: wbot user not found`);
-      return;
-    }
-
     logger.info(
       `Disparo de campanha solicitado: Campanha=${campaignId};Registro=${campaignShippingId}`
     );
-
     const campaignShipping = await CampaignShipping.findByPk(
       campaignShippingId,
-      {
-        include: [{ model: ContactListItem, as: "contact" }]
-      }
+      { include: [{ model: ContactListItem, as: "contact" }] }
     );
-
     const chatId = `${campaignShipping.number}@s.whatsapp.net`;
-
-    let body = campaignShipping.message;
-
     if (campaign.confirmation && campaignShipping.confirmation === null) {
-      body = campaignShipping.confirmationMessage
-    }
-
-    if (!isNil(campaign.fileListId)) {
-      try {
-        const publicFolder = path.resolve(__dirname, "..", "public");
-        const files = await ShowFileService(campaign.fileListId, campaign.companyId)
-        const folder = path.resolve(publicFolder, "fileList", String(files.id))
-        for (const [index, file] of files.options.entries()) {
-          const options = await getMessageOptions(file.path, path.resolve(folder, file.path), file.name);
+      await wbot.sendMessage(chatId, {
+        text: campaignShipping.confirmationMessage
+      });
+      await campaignShipping.update({ confirmationRequestedAt: moment() });
+    } else {
+      await wbot.sendMessage(chatId, { text: campaignShipping.message });
+      if (campaign.mediaPath) {
+        const companyId = campaign.companyId;
+        const filePath = path.resolve(
+          `public/company${companyId}`,
+          campaign.mediaPath
+        );
+        const options = await getMessageOptions(campaign.mediaName, filePath);
+        if (Object.keys(options).length) {
           await wbot.sendMessage(chatId, { ...options });
-        };
-      } catch (error) {
-        logger.info(error);
+        }
       }
+      await campaignShipping.update({ deliveredAt: moment() });
     }
-
-    if (campaign.mediaPath) {
-      const publicFolder = path.resolve(__dirname, "..", "public");
-      const filePath = path.join(publicFolder, campaign.mediaPath);
-
-      const options = await getMessageOptions(campaign.mediaName, filePath, body);
-      if (Object.keys(options).length) {
-        await wbot.sendMessage(chatId, { ...options });
-      }
-    }
-    else {
-      if (campaign.confirmation && campaignShipping.confirmation === null) {
-        await wbot.sendMessage(chatId, {
-          text: body
-        });
-        await campaignShipping.update({ confirmationRequestedAt: moment() });
-      } else {
-
-        await wbot.sendMessage(chatId, {
-          text: body
-        });
-      }
-    }
-    await campaignShipping.update({ deliveredAt: moment() });
-
     await verifyAndFinalizeCampaign(campaign);
-
     const io = getIO();
-    io.to(`company-${campaign.companyId}-mainchannel`).emit(`company-${campaign.companyId}-campaign`, {
+    io.emit(`company-${campaign.companyId}-campaign`, {
       action: "update",
       record: campaign
     });
-
     logger.info(
       `Campanha enviada para: Campanha=${campaignId};Contato=${campaignShipping.contact.name}`
     );
@@ -776,7 +874,6 @@ async function handleDispatchCampaign(job) {
     console.log(err.stack);
   }
 }
-
 async function handleLoginStatus(job) {
   const users: { id: number }[] = await sequelize.query(
     `select id from "Users" where "updatedAt" < now() - '5 minutes'::interval and online = true`,

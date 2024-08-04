@@ -1,14 +1,14 @@
 {
   "name": "frontend",
   "version": "0.1.0",
-  "versionSystem": "4.7.8",
+  "versionSystem": "4.8.5",
   "nomeEmpresa": "PLW Design",
   "private": true,
   "dependencies": {
     "@date-io/date-fns": "^2.14.0",
     "@emotion/styled": "^11.10.6",
-    "@material-ui/core": "4.12.3",
-    "@material-ui/icons": "^4.9.1",
+    "@material-ui/core": "^4.12.3",
+    "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "^4.0.0-alpha.56",
     "@material-ui/pickers": "^3.3.10",
     "@material-ui/styles": "^4.11.5",

@@ -173,6 +173,7 @@ const messages = {
         },
         buttons: {
           import: "Importar Contatos",
+		  importSheet: "Import. Excel",
           add: "Adicionar Contato",
           export: "Exportar Contatos",
           delete: "Excluir Todos Contatos"
@@ -292,12 +293,17 @@ const messages = {
           add: "Adicionar fila",
           edit: "Editar fila",
         },
+		confirmationModal: {
+		  "deleteTitle": "Excluir",
+		},
         form: {
           name: "Nome",
           color: "Cor",
           greetingMessage: "Mensagem de saudação",
+		  ativarRoteador: 'Rodízio de Atendentes',
+          tempoRoteador: 'Tempo para Rodízio',
           complationMessage: "Mensagem de conclusão",
-          outOfHoursMessage: "Mensagem de fora de expediente",
+          outOfHoursMessage: "Mensagem de fora de expediente",		  
           ratingMessage: "Mensagem de avaliação",
           token: "Token",
           orderQueue: "Ordem da fila (Bot)",
@@ -307,6 +313,7 @@ const messages = {
           okAdd: "Adicionar",
           okEdit: "Salvar",
           cancel: "Cancelar",
+		  attach: "Anexar Arquivo",
         },
       },
       userModal: {
@@ -926,6 +933,7 @@ const messages = {
       messageOptionsMenu: {
         delete: "Deletar",
         reply: "Responder",
+		edit: 'Editar Mensagem',
         confirmationModal: {
           title: "Apagar mensagem?",
           message: "Esta ação não pode ser revertida.",

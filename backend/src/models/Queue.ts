@@ -31,6 +31,13 @@ class Queue extends Model<Queue> {
   @AutoIncrement
   @Column
   id: number;
+  @AllowNull(false)
+  @Column
+  ativarRoteador: boolean;
+
+  @AllowNull(false)
+  @Column
+  tempoRoteador: number;
 
   @AllowNull(false)
   @Unique
@@ -98,6 +105,12 @@ class Queue extends Model<Queue> {
 
   @BelongsTo(() => Prompt)
   prompt: Prompt;
+  
+  @Column
+  mediaPath: string;
+
+  @Column
+  mediaName: string;
 }
 
 export default Queue;

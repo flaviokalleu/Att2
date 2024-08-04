@@ -11,13 +11,15 @@ interface QueueData {
   greetingMessage?: string;
   outOfHoursMessage?: string;
   schedules?: any[];
+  ativarRoteador?: boolean;
+  tempoRoteador: number;
   orderQueue?: number;
   integrationId?: number;
   promptId?: number;
 }
 
 const CreateQueueService = async (queueData: QueueData): Promise<Queue> => {
-  const { color, name, companyId } = queueData;
+  const { color, name, companyId,ativarRoteador, tempoRoteador} = queueData;
 
   const company = await Company.findOne({
     where: {

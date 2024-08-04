@@ -11,6 +11,8 @@ interface QueueData {
   outOfHoursMessage?: string;
   schedules?: any[];
   orderQueue?: number;
+  ativarRoteador?: boolean;
+  tempoRoteador: number;
   integrationId?: number;
   promptId?: number;
 }
@@ -20,7 +22,7 @@ const UpdateQueueService = async (
   queueData: QueueData,
   companyId: number
 ): Promise<Queue> => {
-  const { color, name } = queueData;
+  const { color, name,ativarRoteador, tempoRoteador } = queueData;
 
   const queueSchema = Yup.object().shape({
     name: Yup.string()

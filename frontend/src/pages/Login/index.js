@@ -46,7 +46,7 @@ const useStyles = makeStyles(theme => ({
 		textAlign: "center",
 	},
 	paper: {
-		backgroundColor: theme.palette.login, //DARK MODE PLW DESIGN//
+		backgroundColor: theme.palette.login, //RESULTADO IMEDIATO//
 		display: "flex",
 		flexDirection: "column",
 		alignItems: "center",
